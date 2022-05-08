@@ -146,7 +146,7 @@ async def request_max_messages() -> int:
     return int(await input_prompt(f'Max messages to fetch per channel (default: 1000): ', default='1000', checker=checker))
 
 
-async def scrape_channels(guild: discord.Guild, channel_writer):
+async def dump_channels(guild: discord.Guild, channel_writer):
     channel_writer.writerow(['id', 'created_at', 'name', 'type'])
 
     for channel in await guild.fetch_channels():
@@ -168,8 +168,8 @@ async def scrape_channels(guild: discord.Guild, channel_writer):
         ])
 
 
-async def scrape_members(guild: discord.Guild, limit: int, user_writer):
-    user_writer.writerow(['id', 'joined_at', 'name', 'nick', 'premium_since'])
+async def dump_members(guild: discord.Guild, limit: int, user_writer):
+    user_writer.writerow(['id', 'joined_at', 'name', 'nick', 'is_bot', 'premium_since'])
 
     async for member in guild.fetch_members(limit=limit):
         user_writer.writerow([
@@ -177,14 +177,32 @@ async def scrape_members(guild: discord.Guild, limit: int, user_writer):
             int(time.mktime(member.joined_at.timetuple())),
             str(member),
             member.nick,
+            member.bot,
             int(time.mktime(member.premium_since.timetuple())) if member.premium_since else 0
         ])
 
 
-async def scrape_messages(channel: discord.TextChannel, limit: int, message_writer, attachment_writer, reaction_writer):
-    message_writer.writerow(['id', 'author_id', 'created_at', 'modified at', 'content'])
-    attachment_writer.writerow(['message_id', 'type', 'size', 'filename', 'url', 'spoiler'])
-    reaction_writer.writerow(['message_id', 'name', 'reaction_count', 'animated'])
+async def dump_roles(guild: discord.Guild, role_writer):
+    role_writer.writerow(['id', 'created_at', 'name', 'position', 'permissions', 'member_count', 'is_mentionable', 'color'])
+
+    for role in await guild.fetch_roles():
+        role_writer.writerow([
+            role.id,
+            role.created_at,
+            role.name,
+            role.position,
+            role.permissions,
+            len(role.members),
+            role.mentionable,
+            role.color
+        ])
+
+
+async def dump_messages(channel: discord.TextChannel, limit: int, message_writer, attachment_writer, reaction_writer, embed_writer):
+    message_writer.writerow(['id', 'author_id', 'created_at', 'modified_at', 'content'])
+    attachment_writer.writerow(['message_id', 'type', 'size', 'filename', 'url', 'is_spoiler'])
+    reaction_writer.writerow(['message_id', 'name', 'reaction_count', 'is_animated'])
+    embed_writer.writerow(['message_id', 'title', 'description', 'footer', 'image', 'thumbnail', 'video', 'author', 'field_count', 'color'])
 
     async for message in channel.history(limit=limit):
         message_writer.writerow([
@@ -212,6 +230,20 @@ async def scrape_messages(channel: discord.TextChannel, limit: int, message_writ
                     reaction.count,
                     False if isinstance(reaction.emoji, str) else reaction.emoji.animated
                 ])
+        if message.embeds:
+            for embed in message.embeds:
+                embed_writer.writerow([
+                    message.id,
+                    embed.title if embed.title else None,
+                    embed.description if embed.description else None,
+                    embed.footer.text if embed.footer else None,
+                    embed.image.url if embed.image else None,
+                    embed.thumbnail.url if embed.thumbnail else None,
+                    embed.video.url if embed.video else None,
+                    embed.author.name if embed.author else None,
+                    len(embed.fields),
+                    embed.color if embed.color else None
+                ])
 
 
 async def main():
@@ -231,25 +263,29 @@ async def main():
 
         selected_channels = await request_channels(guild)
 
-        print('Starting scraping, this make take a while...')
+        print('Starting dumping, this make take a while...')
 
         with directory.joinpath('channels.csv').open('w+') as channels:
-            await scrape_channels(guild, csv.writer(channels))
-            print('Scraped channels')
+            await dump_channels(guild, csv.writer(channels))
+            print('Dumped channels')
 
         with directory.joinpath('members.csv').open('w+') as members:
-            await scrape_members(guild, max_members, csv.writer(members))
-            print('Scraped members')
+            await dump_members(guild, max_members, csv.writer(members))
+            print('Dumped members')
+
+        with directory.joinpath('roles.csv').open('w+') as roles:
+            await dump_roles(guild, csv.writer(roles))
+            print('Dumped roles')
 
         for channel in selected_channels:
             if isinstance(channel, discord.TextChannel):
                 dir = directory.joinpath(str(channel.id))
                 dir.mkdir()
-                with dir.joinpath('messages.csv').open('w+') as messages, dir.joinpath('attachments.csv').open('w+') as attachments, dir.joinpath('reactions.csv').open('w+') as reactions:
-                    await scrape_messages(channel, max_messages, csv.writer(messages), csv.writer(attachments), csv.writer(reactions))
-                    print(f'Scraped channel {channel.id} (#{channel.name})')
+                with dir.joinpath('messages.csv').open('w+') as messages, dir.joinpath('attachments.csv').open('w+') as attachments, dir.joinpath('reactions.csv').open('w+') as reactions, dir.joinpath('embeds.csv').open('w+') as embeds:
+                    await dump_messages(channel, max_messages, csv.writer(messages), csv.writer(attachments), csv.writer(reactions), csv.writer(embeds))
+                    print(f'Dumped channel {channel.id} (#{channel.name})')
 
-        print('Finished scraping')
+        print('Finished dumping')
     finally:
         await client.close()
 
