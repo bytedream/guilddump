@@ -191,7 +191,7 @@ async def dump_roles(guild: discord.Guild, role_writer):
             role.created_at,
             role.name,
             role.position,
-            role.permissions,
+            role.permissions.value,
             len(role.members),
             role.mentionable,
             role.color
