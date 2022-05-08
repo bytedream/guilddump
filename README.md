@@ -16,7 +16,7 @@ $ pip3 install discord.py simple_term_menu
 
 You can download the script or run it with this:
 ```shell
-$ curl -s https://raw.githubusercontent.com/ByteDream/guildsc/main/guildsc.py -o guilddump.py
+$ curl -s https://raw.githubusercontent.com/ByteDream/guilddump/main/guilddump.py -o guilddump.py
 $ python3 guilddump.py
 ```
 
