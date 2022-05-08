@@ -31,7 +31,7 @@ async def option_prompt(question: str, options: [str]) -> int:
 
 async def select_prompt(question: str, options: [str]) -> [int]:
     print(question)
-    return TerminalMenu(options, clear_menu_on_exit=False, multi_select=True).show()
+    return TerminalMenu(options, clear_menu_on_exit=False, multi_select=True, preselected_entries=options).show()
 
 
 async def yesno_prompt(question: str) -> bool:
@@ -41,18 +41,22 @@ async def yesno_prompt(question: str) -> bool:
 async def request_client() -> discord.Client:
     intents = discord.Intents().default()
     intents.members = True
-    client = discord.Client(intents=intents)
 
-    async def checker(token: str) -> bool:
+    async def checker(checker_token: str) -> bool:
+        checker_client = discord.Client(intents=intents)
         try:
-            await client.login(token)
+            await checker_client.login(checker_token)
+            await checker_client.close()
             return True
         except discord.LoginFailure:
-            await client.close()
             print('Invalid token')
+            await checker_client.close()
             return False
 
-    await input_prompt('Discord Bot Token: ', checker=checker)
+    token = await input_prompt('Discord Bot Token: ', checker=checker)
+
+    client = discord.Client(intents=intents)
+    await client.login(token)
     return client
 
 
@@ -114,7 +118,7 @@ async def request_channels(guild: discord.Guild) -> [discord.TextChannel]:
     return [options[select] for select in selected]
 
 
-async def request_max(target: str) -> int:
+async def request_max_members() -> int:
     def checker(number: str) -> bool:
         try:
             if int(number) > 0:
@@ -125,7 +129,21 @@ async def request_max(target: str) -> int:
         except ValueError:
             return False
 
-    return int(await input_prompt(f'Max {target} to fetch per channel (default: 1000): ', default='1000', checker=checker))
+    return int(await input_prompt(f'Max members to fetch (default: 1000): ', default='1000', checker=checker))
+
+
+async def request_max_messages() -> int:
+    def checker(number: str) -> bool:
+        try:
+            if int(number) > 0:
+                return True
+            else:
+                print('Value must be greater than 0')
+                return False
+        except ValueError:
+            return False
+
+    return int(await input_prompt(f'Max messages to fetch per channel (default: 1000): ', default='1000', checker=checker))
 
 
 async def scrape_channels(guild: discord.Guild, channel_writer):
@@ -208,8 +226,8 @@ async def main():
         else:
             directory.mkdir()
 
-        max_members = await request_max('users')
-        max_messages = await request_max('messages')
+        max_members = await request_max_members()
+        max_messages = await request_max_messages()
 
         selected_channels = await request_channels(guild)
 
@@ -232,10 +250,7 @@ async def main():
                     print(f'Scraped channel {channel.id} (#{channel.name})')
 
         print('Finished scraping')
-
-        await client.close()
-
-    except BaseException:
+    finally:
         await client.close()
 
 
